@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+from apiclient import errors
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -50,7 +51,6 @@ def main():
     except HttpError as err:
         print(err)
 
-
 def create_doc(title, scopes):
     creds = get_creds(scopes)
     service = build("docs", 'v1', credentials=creds)
@@ -61,6 +61,18 @@ def create_doc(title, scopes):
     doc = service.documents() \
         .create(body=body).execute()
     print('Created document with title: {0}'.format(doc.get('title')))    
+
+# def delete_file(service, file_id):
+#   """Permanently delete a file, skipping the trash.
+
+#   Args:
+#     service: Drive API service instance.
+#     file_id: ID of the file to delete.
+#   """
+#   try:
+#     service.files().delete(fileId=file_id).execute()
+#   except HttpError as err:
+#     print(err)
 
 def get_creds(scopes):
     creds = None
@@ -82,39 +94,79 @@ def get_creds(scopes):
             token.write(creds.to_json())
     return creds
 
-def resume_stuff(scopes):
+def resume_stuff(services):
+    """Creates resume based on user input"""
     # Deletes token to generate the appropriate service (from new token)
     # os.remove("token.json")
     question = input("Please enter 1 if creating new resume, or 2 if editing existing resume: ")
+    title = input("Please enter the title of your resume: ")
     # title = input("Please enter title for resume: ")
     if question == "1":
-        create_resume(scopes['Drive'] + scopes['Docs'])
+        file_id = create_copy(title, services['drive'])
+        return file_id
     else:
-        # edit_resume(scopes['Docs'])
-        create_doc("hehexd", scopes['Drive'] + scopes['Docs'])
+        edit_resume()
 
-def edit_resume(scopes):
+def edit_resume():
+    """TODO"""
     return
-def create_resume(scopes):
+def create_copy(title, service):
     '''Creates a resume using the resume template's structure'''
-    creds = get_creds(scopes)
     # Creates Google Drive service that allows to use Google Drive API
     try:
-        drive_service = build('drive', 'v3', credentials=creds)
-        copy_title = 'Resume Template'
+        copy_title = '%s' % title
         body = {
         'name': copy_title
         }
         # Doc ID for the resume template 
         document_id = '1-JSL1i-WtjIkqhYjc0YtVeI09SicUM_CSQclooQouY4'
-        drive_response = drive_service.files().copy(
-        fileId=document_id, body=body, name="hehexd").execute()
+        drive_response = service.files().copy(
+        fileId=document_id, body=body).execute()
         document_copy_id = drive_response.get('id')
-        print(document_copy_id)
+        return document_copy_id
     except HttpError as err:
         print(err)
+
+def remove_fields(file_id, service):
+    """Removes content of a document given its document ID and the Google Docs service"""
+    requests = [
+        {
+            'deleteContentRange': {
+                'range': {
+                    'startIndex': 1,
+                    'endIndex': 5,
+                }
+
+            }
+
+        },
+    ]
+    result = service.documents().batchUpdate(
+        documentId=file_id, body={'requests': requests}).execute()
+
+def delete_doc(file_id, scopes):
+    """TODO"""
+    try: 
+        creds = get_creds(scopes)
+        drive_service = build("drive", "v3", credentials=creds)
+        drive_service.files().delete(fileId=file_id).execute()
+    except HttpError as err:
+        print(err)
+
+def get_contents(metadata):
+    """Grab the contents of a given document's metadata
+    """
+    return
+
 if __name__ == '__main__':
-    scopes = {"Drive": ['https://www.googleapis.com/auth/drive'], 
+    scopes_dict = {"Drive": ['https://www.googleapis.com/auth/drive'], 
     "Docs": ['https://www.googleapis.com/auth/documents']}
-    # service = main()
-    resume_stuff(scopes)
+    scopes = scopes_dict["Drive"] + scopes_dict["Docs"]
+    creds = get_creds(scopes)
+    # Testing out how to print out the document's metadata
+    docs_service = build("docs", "v1", credentials=creds)
+    drive_service = build("drive", "v3", credentials=creds)
+    services = {"docs": docs_service, "drive": drive_service}
+    file_id = resume_stuff(services)
+    doc_metadata = docs_service.documents().get(documentId=file_id).execute()
+    # print(doc_metadata)
